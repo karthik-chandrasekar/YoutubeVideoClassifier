@@ -5,45 +5,51 @@ class DataSetCollector:
     
     def __init__(self):
         self.sparql = SPARQLWrapper("http://dbpedia.org/sparql")
-        self.getFilmQuery = """ SELECT DISTINCT ?film_title ?film_abstract
-        WHERE {
-        ?film_title rdf:type <http://dbpedia.org/ontology/Film> .
-        ?film_title rdfs:comment ?film_abstract 
-        } """
-
-        self.getMovieActorQuery = """ SELECT ?movie ?actor
-        WHERE {
-             ?movie a dbpedia-owl:Film ;
-                  dbpedia-owl:starring ?actor
-        }"""
-
-        self.film_file = codecs.open('film_dump', 'w', 'utf-8')
-        self.movie_actor_file = codecs.open('movie_actor_dump', 'w', 'utf-8')
+        self.getFilms = """ SELECT ?movie WHERE { ?movie a dbpedia-owl:Film}"""
+        self.getTvShows = """ SELECT ?tvshow WHERE { ?tvshow a dbpedia-owl:TelevisionShow}"""
+        self.getActors = """ SELECT ?movie ?actor WHERE {?movie a dbpedia-owl:Film; dbpedia-owl:starring ?actor}"""
+        self.movie_names_file = codecs.open('movies_name', 'w', 'utf-8')
+        self.actors_names_file = codecs.open('actors_name', 'w', 'utf-8')
+        self.tvshows_names_file = codecs.open('tvshows_name', 'w', 'utf-8')
 
 
     def run_main(self):
-        self.run_film_query()
-        self.run_movie_actor_query()
+        self.collectFilms()
+        self.collectActors()
+        self.collectTvShows()
 
-    def run_film_query(self):
-        self.sparql.setQuery(self.getFilmQuery)
+    def collectFilms(self): 
+        self.sparql.setQuery(self.getFilms)
         self.sparql.setReturnFormat(JSON)
         results = self.sparql.query().convert()
-
+        
         for result in results.get('results').get('bindings'):
-            lang = result.get('film_abstract').get('xml:lang')
-            if lang != 'en':
-                continue
-            desc = result.get('film_abstract').get('value')
-            title = result.get('film_title').get('value')
-            self.film_file.write("%s\t%s\n" % (title, desc))
- 
+            movie_name = result.get('movie').get('value')
+            movie_name = movie_name and movie_name.strip("http://dbpedia.org/resource/")
+            if not movie_name:continue
+            self.movie_names_file.write("%s\n" % (movie_name)) 
 
-    def run_movie_actor_query(self):
-        self.sparql.setQuery(self.getMovieActorQuery)
+    def collectActors(self):
+        self.sparql.setQuery(self.getActors)
         self.sparql.setReturnFormat(JSON)
         results = self.sparql.query().convert()
+        
+        for result in results.get('results').get('bindings'):
+            actor_name = result.get('actor').get('value')
+            actor_name = actor_name and actor_name.strip("http://dbpedia.org/resource/")
+            if not actor_name:continue
+            self.actors_names_file.write("%s\n" % (actor_name)) 
 
+    def collectTvShows(self):
+        self.sparql.setQuery(self.getTvShows)
+        self.sparql.setReturnFormat(JSON)
+        results = self.sparql.query().convert()
+        
+        for result in results.get('results').get('bindings'):
+            tvshow_name = result.get('tvshow').get('value')
+            tvshow_name = tvshow_name and tvshow_name.strip("http://dbpedia.org/resource/")
+            if not tvshow_name:continue
+            self.tvshows_names_file.write("%s\n" % (tvshow_name)) 
 
 
 class YoutubeVideoClassifier:
