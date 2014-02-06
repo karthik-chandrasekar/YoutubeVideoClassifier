@@ -15,6 +15,7 @@ from nltk.corpus import stopwords
 from nltk.classify import NaiveBayesClassifier
 from nltk.classify.scikitlearn import SklearnClassifier
 from sklearn.svm import LinearSVC
+from nltk.stem import PorterStemmer
 
 
 class DataSetCollector:
@@ -27,8 +28,6 @@ class DataSetCollector:
         self.movie_names_file = codecs.open('movies_name', 'w', 'utf-8')
         self.actors_names_file = codecs.open('actors_name', 'w', 'utf-8')
         self.tvshows_names_file = codecs.open('tvshows_name', 'w', 'utf-8')
-
-
 
     def run_main(self):
         self.collectFilms()
@@ -140,8 +139,6 @@ class YoutubeVideoClassifier:
 
 
     def feature_extraction(self):
-
-
         for item in self.tvshows_list:
             if not item:continue
             selected_features = self.feature_selection([item.replace("_"," ")])
@@ -187,16 +184,24 @@ class YoutubeVideoClassifier:
         svm_fd.close()
 
 
-class RelatedVideo:
+class RelatedVideoGenerator:
     def __init__(self):
         self.test_file = 'CodeAssignmentDataSet.json'
+        self.related_tfidf = "RelatedVideoTfIDf"
+        self.related_cosine = "RelatedVideoCosine"
+        
+        self.stopwords_set = set(stopwords.words('english'))    
+        self.stemmer = PorterStemmer()
+        
         self.test_data = []
-        self.selected_features = []
-
+        self.features_set_list = []
+        self.features_string_list = []
+        
     def run_main(self):
         self.load_data()
         self.select_features()
-        self.find_related()
+        self.find_related_cosine()
+        self.find_related_tfidf()
 
     def load_data(self):
         self.test_instances_list = []
@@ -205,22 +210,42 @@ class RelatedVideo:
      
     def select_features(self):
         for instance in self.test_data:
-            self.selected_features.append(instance.get('title') + instance.get('description'))
+            feature = instance.get('title') + " " + instance.get('description')
+            feature  = feature.split(" ")
+            feature = [self.stemmer.stem(feat.lower().strip()) for feat in feature if feat and feat.lower().strip() not in self.stopwords_set]
+            feature_string = " ".join(feature)
+            self.features_set_list.append(set(feature))
+            self.features_string_list.append(feature_string)
+
+    def find_related_cosine(self):
+        related_fd = codecs.open(self.related_cosine, 'w', 'utf-8')
+        for index, feature in enumerate(self.features_set_list):
+            related = self.get_relevant_entry(feature, index)
+            related_fd.write("%s\t%s\n%s\n%s\n%s\n%s\n\n" % (index, related, self.features_set_list[index], self.features_set_list[related[0]], self.features_set_list[related[1]], self.features_set_list[related[2]]))
  
-    def find_related(self):
+    def get_relevant_entry(self, feature, index):
+        relevant_value = []
+        for ind, feat in enumerate(self.features_set_list):
+            if ind == index:relevant_value.append(0);continue
+            relevant_value.append(len(feat.intersection(feature))/float(len(feat.union(feature))))
+        return self.get_similar(relevant_value)
+
+    def find_related_tfidf(self):
+        related_fd = codecs.open(self.related_tfidf, 'w', 'utf-8')
         vect = TfidfVectorizer(min_df=1)
-        tfidf = vect.fit_transform(self.selected_features)
+        tfidf = vect.fit_transform(self.features_string_list)
         array = (tfidf * tfidf.T).A   
         array_list = array.tolist()
-
+        
         for i,entry in enumerate(array_list):
-            related = self.get_3_similar(entry)
-            print "%s\t%s\n" % (i, related)
+            entry[i] = 0
+            related = self.get_similar(entry)
+            related_fd.write("%s\t%s\n%s\n%s\n%s\n%s\n\n" % (i, related, self.features_string_list[i], self.features_string_list[related[0]], self.features_string_list[related[1]], self.features_string_list[related[2]]))
 
-    def get_3_similar(self, entry):
+    def get_similar(self, entry):
         if not entry:return []
         if len(entry) <3 : return entry
-        result = sorted(range(len(entry)), key=lambda i:entry[i]) 
+        result = sorted(range(len(entry)), key=lambda i:entry[i], reverse=True) 
         return result[:3]
     
 if __name__ == "__main__":
@@ -236,7 +261,8 @@ if __name__ == "__main__":
         y_obj.run_main()
 
     elif mode == 2:
-        r_obj = RelatedVideo()
+        r_obj = RelatedVideoGenerator()
         r_obj.run_main()
 
+    else:
         print "Please enter the appropriate mode"
