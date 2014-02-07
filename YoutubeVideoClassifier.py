@@ -38,7 +38,7 @@ class Utility:
         self.actors_file = os.path.join(self.input_dir, self.actors_file_name)
         self.tvshows_file = os.path.join(self.input_dir, self.tvshows_file_name)
         self.test_file = os.path.join(self.input_dir, self.test_file_name) 
-        self.logging_file = os.path.join(self.input_dir, self.logging_file_name)        
+        self.logging_file = os.path.join(self.output_dir, self.logging_file_name)        
 
         logging.basicConfig(filename=self.logging_file, level=logging.INFO)
         logging.info("Initialized logging")
