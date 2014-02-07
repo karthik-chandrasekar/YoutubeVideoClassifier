@@ -17,17 +17,42 @@ from nltk.classify.scikitlearn import SklearnClassifier
 from sklearn.svm import LinearSVC
 from nltk.stem import PorterStemmer
 
+class Utility:
+    def __init__(self):
+        
+        self.config = ConfigParser.ConfigParser()
+        self.config.read("YoutubeVideoClassifier.config")
+        self.movies_file_name = self.config.get('GLOBAL', 'movies_file')
+        self.actors_file_name = self.config.get('GLOBAL', 'actors_file')
+        self.tvshows_file_name = self.config.get('GLOBAL', 'tvshows_file')
+        self.test_file_name = self.config.get('GLOBAL', 'test_file')
 
-class DataSetCollector:
+        self.input_dir = self.config.get('GLOBAL', 'input_dir')
+        self.output_dir = self.config.get('GLOBAL', 'output_dir')
+        cur_dir = os.getcwd()
+ 
+        self.input_dir = os.path.join(cur_dir, self.input_dir)
+        if not os.path.exists(self.input_dir):
+            os.makedirs(self.input_dir)
+
+        self.output_dir = os.path.join(cur_dir, self.output_dir)
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+
+        self.movies_file = os.path.join(self.input_dir, self.movies_file_name)
+        self.actors_file = os.path.join(self.input_dir, self.actors_file_name)
+        self.tvshows_file = os.path.join(self.input_dir, self.tvshows_file_name)
+        self.test_file = os.path.join(self.input_dir, self.test_file_name) 
+    
+class DataSetCollector(Utility):
     
     def __init__(self):
+        Utility.__init__(self)
+
         self.sparql = SPARQLWrapper("http://dbpedia.org/sparql")
-        self.getFilms = """ SELECT ?movie WHERE { ?movie a dbpedia-owl:Film}"""
-        self.getTvShows = """ SELECT ?tvshow WHERE { ?tvshow a dbpedia-owl:TelevisionShow}"""
-        self.getActors = """ SELECT ?movie ?actor WHERE {?movie a dbpedia-owl:Film; dbpedia-owl:starring ?actor}"""
-        self.movie_names_file = codecs.open('movies_name', 'w', 'utf-8')
-        self.actors_names_file = codecs.open('actors_name', 'w', 'utf-8')
-        self.tvshows_names_file = codecs.open('tvshows_name', 'w', 'utf-8')
+        self.getFilms = self.config.get('QUERY', 'getFilmsQuery')
+        self.getTvShows = self.config.get('QUERY', 'getTvShowsQuery')
+        self.getActors = self.config.get('QUERY', 'getActorsQuery')
 
     def run_main(self):
         self.collectFilms()
@@ -35,6 +60,7 @@ class DataSetCollector:
         self.collectTvShows()
 
     def collectFilms(self): 
+        self.movies_file_fd = codecs.open(self.movies_file, 'w', 'utf-8')
         self.sparql.setQuery(self.getFilms)
         self.sparql.setReturnFormat(JSON)
         results = self.sparql.query().convert()
@@ -43,10 +69,11 @@ class DataSetCollector:
             movie_name = result.get('movie').get('value')
             movie_name = movie_name and movie_name.strip("http://dbpedia.org/resource/")
             if not movie_name:continue
-            self.movie_names_file.write("%s\n" % (movie_name)) 
-        self.movie_names_file.close()
+            self.movies_file_fd.write("%s\n" % (movie_name)) 
+        self.movies_file_fd.close()
 
     def collectActors(self):
+        self.actors_file_fd = codecs.open(self.actors_file, 'w', 'utf-8')
         self.sparql.setQuery(self.getActors)
         self.sparql.setReturnFormat(JSON)
         results = self.sparql.query().convert()
@@ -55,10 +82,11 @@ class DataSetCollector:
             actor_name = result.get('actor').get('value')
             actor_name = actor_name and actor_name.strip("http://dbpedia.org/resource/")
             if not actor_name:continue
-            self.actors_names_file.write("%s\n" % (actor_name)) 
-        self.actors_names_file.close()
+            self.actors_file_fd.write("%s\n" % (actor_name)) 
+        self.actors_file_fd.close()
 
     def collectTvShows(self):
+        self.tvshows_file_fd = codecs.open(self.tvshows_file, 'w', 'utf-8')
         self.sparql.setQuery(self.getTvShows)
         self.sparql.setReturnFormat(JSON)
         results = self.sparql.query().convert()
@@ -67,20 +95,18 @@ class DataSetCollector:
             tvshow_name = result.get('tvshow').get('value')
             tvshow_name = tvshow_name and tvshow_name.strip("http://dbpedia.org/resource/")
             if not tvshow_name:continue
-            self.tvshows_names_file.write("%s\n" % (tvshow_name)) 
+            self.tvshows_file_fd.write("%s\n" % (tvshow_name)) 
 
-        self.tvshows_names_file.close()        
+        self.tvshows_file_fd.close()        
 
-class YoutubeVideoClassifier:
+class YoutubeVideoClassifier(Utility):
     def __init__(self):
-        self.movie_file = 'movies_name'
-        self.actors_file = 'actors_name'
-        self.tvshows_file = 'tvshows_name'
-        self.test_file = 'CodeAssignmentDataSet.json'
-        
-        self.nb_output = 'NB_results'
-        self.svm_output = 'SVM_results'
-            
+        Utility.__init__(self)
+        self.nb_output_file_name = self.config.get('GLOBAL', 'nb_output_file')
+        self.svm_output_file_name = self.config.get('GLOBAL', 'svm_output_file')
+        self.nb_output = os.path.join(self.output_dir, self.nb_output_file_name)
+        self.svm_output = os.path.join(self.output_dir, self.svm_output_file_name)        
+    
         self.train_features = []
         self.stopwords_set = set(stopwords.words('english'))    
 
@@ -101,7 +127,7 @@ class YoutubeVideoClassifier:
 
     def load_movies(self):
         self.movies_list = []
-        movies_fd = codecs.open(self.movie_file)
+        movies_fd = codecs.open(self.movies_file)
         
         for movie in movies_fd.readlines():
             if not movie: continue
@@ -184,12 +210,16 @@ class YoutubeVideoClassifier:
         svm_fd.close()
 
 
-class RelatedVideoGenerator:
+class RelatedVideoGenerator(Utility):
     def __init__(self):
-        self.test_file = 'CodeAssignmentDataSet.json'
-        self.related_tfidf = "RelatedVideoTfIDf"
-        self.related_cosine = "RelatedVideoCosine"
+        Utility.__init__(self)
         
+        self.related_tfidf_file_name = self.config.get('GLOBAL', 'tfidf_related_output')
+        self.related_jaccard_file_name = self.config.get('GLOBAL', 'jaccard_related_output')
+       
+        self.related_tfidf = os.path.join(self.output_dir, self.related_tfidf_file_name)
+        self.related_jaccard = os.path.join(self.output_dir, self.related_jaccard_file_name)
+ 
         self.stopwords_set = set(stopwords.words('english'))    
         self.stemmer = PorterStemmer()
         
@@ -200,7 +230,7 @@ class RelatedVideoGenerator:
     def run_main(self):
         self.load_data()
         self.select_features()
-        self.find_related_cosine()
+        self.find_related_jaccard()
         self.find_related_tfidf()
 
     def load_data(self):
@@ -217,8 +247,8 @@ class RelatedVideoGenerator:
             self.features_set_list.append(set(feature))
             self.features_string_list.append(feature_string)
 
-    def find_related_cosine(self):
-        related_fd = codecs.open(self.related_cosine, 'w', 'utf-8')
+    def find_related_jaccard(self):
+        related_fd = codecs.open(self.related_jaccard, 'w', 'utf-8')
         for index, feature in enumerate(self.features_set_list):
             related = self.get_relevant_entry(feature, index)
             related_fd.write("%s\t%s\n%s\n%s\n%s\n%s\n\n" % (index, related, self.features_set_list[index], self.features_set_list[related[0]], self.features_set_list[related[1]], self.features_set_list[related[2]]))
