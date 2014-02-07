@@ -18,8 +18,10 @@ from sklearn.svm import LinearSVC
 from nltk.stem import PorterStemmer
 
 class Utility:
+    ''' Utilities to be used across all classes''' 
+   
     def __init__(self):
-        
+  
         self.config = ConfigParser.ConfigParser()
         self.config.read("YoutubeVideoClassifier.config")
         self.movies_file_name = self.config.get('GLOBAL', 'movies_file')
@@ -45,7 +47,8 @@ class Utility:
         self.test_file = os.path.join(self.input_dir, self.test_file_name) 
     
 class DataSetCollector(Utility):
-    
+    ''' Fetch data from dbpedia and store in file'''
+ 
     def __init__(self):
         Utility.__init__(self)
 
@@ -100,6 +103,8 @@ class DataSetCollector(Utility):
         self.tvshows_file_fd.close()        
 
 class YoutubeVideoClassifier(Utility):
+    ''' Use the collected data as training set and classify test data''' 
+  
     def __init__(self):
         Utility.__init__(self)
         self.nb_output_file_name = self.config.get('GLOBAL', 'nb_output_file')
@@ -132,8 +137,8 @@ class YoutubeVideoClassifier(Utility):
         for movie in movies_fd.readlines():
             if not movie: continue
             self.movies_list.append(movie)           
+        movies_fd.close()   
  
-    
     def load_actors(self):
         self.actors_list = []
         actors_fd = codecs.open(self.actors_file)
@@ -141,6 +146,7 @@ class YoutubeVideoClassifier(Utility):
         for actor in actors_fd.readlines():
             if not actor: continue
             self.actors_list.append(actor)
+        actors_fd.close()
 
     def load_tvshows(self):
         self.tvshows_list = []
@@ -149,7 +155,8 @@ class YoutubeVideoClassifier(Utility):
         for tvshow in tvshows_fd.readlines():
             if not tvshow:continue
             self.tvshows_list.append(tvshow)
-
+        tvshows_fd.close()
+    
     def load_test_data(self):
         self.test_instances_list = []
         json_data = open(self.test_file)
@@ -167,17 +174,17 @@ class YoutubeVideoClassifier(Utility):
     def feature_extraction(self):
         for item in self.tvshows_list:
             if not item:continue
-            selected_features = self.feature_selection([item.replace("_"," ")])
+            selected_features = self.feature_selection(item.replace("_"," ").split(" "))
             self.train_features.append((selected_features, 'tvshow'))
 
         for item in self.movies_list:
             if not item: continue
-            selected_features = self.feature_selection([item.replace("_"," ")])
+            selected_features = self.feature_selection(item.replace("_"," ").split(" "))
             self.train_features.append((selected_features, 'movies'))
             
         for item in self.actors_list:
             if not item: continue
-            selected_features = self.feature_selection([item.replace("_"," ")]) 
+            selected_features = self.feature_selection(item.replace("_"," ").split(" ")) 
             self.train_features.append((selected_features, 'celebrity'))    
 
     def classification(self):
@@ -211,6 +218,8 @@ class YoutubeVideoClassifier(Utility):
 
 
 class RelatedVideoGenerator(Utility):
+    ''' Related video suggestions based on jaccard similarity and vector similarity'''
+    
     def __init__(self):
         Utility.__init__(self)
         
@@ -252,6 +261,7 @@ class RelatedVideoGenerator(Utility):
         for index, feature in enumerate(self.features_set_list):
             related = self.get_relevant_entry(feature, index)
             related_fd.write("%s\t%s\n%s\n%s\n%s\n%s\n\n" % (index, related, self.features_set_list[index], self.features_set_list[related[0]], self.features_set_list[related[1]], self.features_set_list[related[2]]))
+        related_fd.close()
  
     def get_relevant_entry(self, feature, index):
         relevant_value = []
@@ -271,6 +281,7 @@ class RelatedVideoGenerator(Utility):
             entry[i] = 0
             related = self.get_similar(entry)
             related_fd.write("%s\t%s\n%s\n%s\n%s\n%s\n\n" % (i, related, self.features_string_list[i], self.features_string_list[related[0]], self.features_string_list[related[1]], self.features_string_list[related[2]]))
+        related_fd.close()
 
     def get_similar(self, entry):
         if not entry:return []
