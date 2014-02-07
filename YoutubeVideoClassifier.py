@@ -1,16 +1,8 @@
 #!/usr/bin/env python
 #coding=utf-8
-import sys, codecs
-import operator, string, re, sys
-import nltk, os, logging, ConfigParser
-import nltk.classify.util
-import json
-
+import sys, codecs, json, os, ConfigParser, logging
 from sklearn.feature_extraction.text import TfidfVectorizer
 from SPARQLWrapper import SPARQLWrapper, JSON
-from nltk.probability import FreqDist, ConditionalFreqDist
-from nltk.metrics import BigramAssocMeasures
-from nltk.collocations import BigramCollocationFinder
 from nltk.corpus import stopwords
 from nltk.classify import NaiveBayesClassifier
 from nltk.classify.scikitlearn import SklearnClassifier
@@ -18,7 +10,7 @@ from sklearn.svm import LinearSVC
 from nltk.stem import PorterStemmer
 
 class Utility:
-    ''' Utilities to be used across all classes''' 
+    ''' Utilities to be used by all classes''' 
    
     def __init__(self):
   
@@ -28,6 +20,7 @@ class Utility:
         self.actors_file_name = self.config.get('GLOBAL', 'actors_file')
         self.tvshows_file_name = self.config.get('GLOBAL', 'tvshows_file')
         self.test_file_name = self.config.get('GLOBAL', 'test_file')
+        self.logging_file_name = self.config.get('GLOBAL', 'log_file')
 
         self.input_dir = self.config.get('GLOBAL', 'input_dir')
         self.output_dir = self.config.get('GLOBAL', 'output_dir')
@@ -45,6 +38,10 @@ class Utility:
         self.actors_file = os.path.join(self.input_dir, self.actors_file_name)
         self.tvshows_file = os.path.join(self.input_dir, self.tvshows_file_name)
         self.test_file = os.path.join(self.input_dir, self.test_file_name) 
+        self.logging_file = os.path.join(self.input_dir, self.logging_file_name)        
+
+        logging.basicConfig(filename=self.logging_file, level=logging.INFO)
+        logging.info("Initialized logging")
     
 class DataSetCollector(Utility):
     ''' Fetch data from dbpedia and store in file'''
@@ -68,11 +65,18 @@ class DataSetCollector(Utility):
         self.sparql.setReturnFormat(JSON)
         results = self.sparql.query().convert()
         
-        for result in results.get('results').get('bindings'):
-            movie_name = result.get('movie').get('value')
-            movie_name = movie_name and movie_name.strip("http://dbpedia.org/resource/")
-            if not movie_name:continue
-            self.movies_file_fd.write("%s\n" % (movie_name)) 
+        films = results.get('results')
+        films = films and films.get('bindings')
+        if not films:return
+        for result in films:
+            try:
+                movie_name = result.get('movie').get('value')
+                movie_name = movie_name and movie_name.strip("http://dbpedia.org/resource/")
+                if not movie_name:continue
+                self.movies_file_fd.write("%s\n" % (movie_name))
+            except:
+                logging.info("Exception while parsing movie data") 
+                continue
         self.movies_file_fd.close()
 
     def collectActors(self):
@@ -81,11 +85,17 @@ class DataSetCollector(Utility):
         self.sparql.setReturnFormat(JSON)
         results = self.sparql.query().convert()
         
-        for result in results.get('results').get('bindings'):
-            actor_name = result.get('actor').get('value')
-            actor_name = actor_name and actor_name.strip("http://dbpedia.org/resource/")
-            if not actor_name:continue
-            self.actors_file_fd.write("%s\n" % (actor_name)) 
+        actors = results.get('results')
+        actors = actors and actors.get('bindings')
+        for result in actors:
+            try:
+                actor_name = result.get('actor').get('value')
+                actor_name = actor_name and actor_name.strip("http://dbpedia.org/resource/")
+                if not actor_name:continue
+                self.actors_file_fd.write("%s\n" % (actor_name))
+            except:
+                logging.info("Exception while parsing actors data") 
+                continue
         self.actors_file_fd.close()
 
     def collectTvShows(self):
@@ -94,12 +104,17 @@ class DataSetCollector(Utility):
         self.sparql.setReturnFormat(JSON)
         results = self.sparql.query().convert()
         
-        for result in results.get('results').get('bindings'):
-            tvshow_name = result.get('tvshow').get('value')
-            tvshow_name = tvshow_name and tvshow_name.strip("http://dbpedia.org/resource/")
-            if not tvshow_name:continue
-            self.tvshows_file_fd.write("%s\n" % (tvshow_name)) 
-
+        tvshows = results.get('results')
+        tvshows = tvshows and tvshows.get('bindings')
+        for result in tvshows:
+            try:
+                tvshow_name = result.get('tvshow').get('value')
+                tvshow_name = tvshow_name and tvshow_name.strip("http://dbpedia.org/resource/")
+                if not tvshow_name:continue
+                self.tvshows_file_fd.write("%s\n" % (tvshow_name)) 
+            except:
+                logging.info("Exception while parsing tvshow data")
+                continue
         self.tvshows_file_fd.close()        
 
 class YoutubeVideoClassifier(Utility):
@@ -158,7 +173,6 @@ class YoutubeVideoClassifier(Utility):
         tvshows_fd.close()
     
     def load_test_data(self):
-        self.test_instances_list = []
         json_data = open(self.test_file)
         self.test_data = json.load(json_data)
 
@@ -180,7 +194,7 @@ class YoutubeVideoClassifier(Utility):
         for item in self.movies_list:
             if not item: continue
             selected_features = self.feature_selection(item.replace("_"," ").split(" "))
-            self.train_features.append((selected_features, 'movies'))
+            self.train_features.append((selected_features, 'movie'))
             
         for item in self.actors_list:
             if not item: continue
@@ -197,22 +211,25 @@ class YoutubeVideoClassifier(Utility):
         self.svm_classifier.train(self.train_features)
 
     def testing(self):
-        self.test_instances_list = []
         nb_fd = codecs.open(self.nb_output, 'w', 'utf-8')
         svm_fd = codecs.open(self.svm_output, 'w', 'utf-8')
 
         for instance in self.test_data:
-            if not instance:continue
-            test_features = instance.get('title').split(" ")
-            test_features.extend(instance.get('description').split(" "))
-            selected_features = self.feature_selection(test_features)
+            try:
+                if not instance:continue
+                test_features = instance.get('title').split(" ")
+                test_features.extend(instance.get('description').split(" "))
+                selected_features = self.feature_selection(test_features)
 
-            label = self.nb_classifier.classify(selected_features)
-            nb_fd.write("%s\n" % (label))
+                label = self.nb_classifier.classify(selected_features)
+                nb_fd.write("%s\n" % (label))
 
-            label = self.svm_classifier.classify(selected_features)
-            svm_fd.write("%s\n" % (label))
-        
+                label = self.svm_classifier.classify(selected_features)
+                svm_fd.write("%s\n" % (label))
+            except:
+                logging.info("Exception in test data ")       
+                continue
+ 
         nb_fd.close()
         svm_fd.close()
 
@@ -243,18 +260,21 @@ class RelatedVideoGenerator(Utility):
         self.find_related_tfidf()
 
     def load_data(self):
-        self.test_instances_list = []
         json_data = open(self.test_file)
         self.test_data = json.load(json_data)
      
     def select_features(self):
         for instance in self.test_data:
-            feature = instance.get('title') + " " + instance.get('description')
-            feature  = feature.split(" ")
-            feature = [self.stemmer.stem(feat.lower().strip()) for feat in feature if feat and feat.lower().strip() not in self.stopwords_set]
-            feature_string = " ".join(feature)
-            self.features_set_list.append(set(feature))
-            self.features_string_list.append(feature_string)
+            try:
+                feature = instance.get('title') + " " + instance.get('description')
+                feature  = feature.split(" ")
+                feature = [self.stemmer.stem(feat.lower().strip()) for feat in feature if feat and feat.lower().strip() not in self.stopwords_set]
+                feature_string = " ".join(feature)
+                self.features_set_list.append(set(feature))
+                self.features_string_list.append(feature_string)
+            except:
+                logging.info("Exception in test data")
+                continue
 
     def find_related_jaccard(self):
         related_fd = codecs.open(self.related_jaccard, 'w', 'utf-8')
